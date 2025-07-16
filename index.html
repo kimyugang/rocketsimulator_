@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>항공우주공학 시뮬레이터</title>
+<style>
+  body, html {
+    margin:0; padding:0; height:100%; background:#001F54; color:white; font-family: Arial, sans-serif;
+    display:flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  #landingPage {
+    text-align: center;
+    background: url('https://img.freepik.com/free-photo/earth-galaxy-elements-this-image-furnished-by-nasa_335224-750.jpg?semt=ais_hybrid&w=740') no-repeat center center;
+    background-size: cover;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;  /* 수직 중앙 */
+    align-items: center;      /* 수평 중앙 */
+    color: white;
+    text-shadow: 0 0 10px black;
+  }
+
+  #landingPage h1 {
+    font-size: 3rem;
+    margin-bottom: 50px;
+  }
+  button {
+    background:#004080; border:none; color:white; padding:15px 35px;
+    margin: 0 15px; font-size: 1.2rem; border-radius: 10px; cursor:pointer;
+    box-shadow: 0 0 10px #0af;
+    transition: background-color 0.3s ease;
+  }
+  button:hover {
+    background:#0066cc;
+  }
+  #simulatorContainer {
+    display:none; flex-direction: column; align-items: center;
+    width: 100%; max-width: 800px; padding: 20px; box-sizing: border-box;
+  }
+  #backBtn {
+    align-self: flex-start; margin-bottom: 10px;
+    background:#004080; padding:8px 20px; font-size:1rem;
+    border-radius:6px; box-shadow: 0 0 10px #0af;
+  }
+  canvas {
+    background: #000022; border-radius: 10px; box-shadow: 0 0 20px #00aaff;
+  }
+  label, input {
+    font-size: 1rem;
+    margin: 5px;
+  }
+</style>
+</head>
+<body>
+
+<section id="landingPage">
+  <h1>항공우주공학 시뮬레이터</h1>
+  <div>
+    <button id="btnOrbit">위성 궤도 진입</button>
+    <button id="btnRocket">로켓 발사 각도</button>
+  </div>
+</section>
+
+<section id="simulatorContainer">
+  <button id="backBtn">← 뒤로가기</button>
+
+  <div id="orbitSim" style="display:none; text-align:center;">
+    <h2>위성 궤도 진입 시뮬레이터</h2>
+    <label>초기 속도 (km/s): <input type="number" id="speedInput" min="5" max="12" step="0.1" value="7.8"></label><br>
+    <label>발사 각도 (도, 수평=0): <input type="number" id="angleInput" min="-90" max="90" step="1" value="0"></label><br>
+    <button id="startOrbitBtn">시작</button>
+    <canvas id="orbitCanvas" width="600" height="600"></canvas>
+  </div>
+
+  <div id="rocketSim" style="display:none; text-align:center;">
+    <h2>로켓 발사 각도 시뮬레이터</h2>
+    <label>발사 각도 (도): <span id="angleValue">45</span></label><br>
+    <input type="range" id="angleRange" min="0" max="90" value="45"><br>
+    <button id="launchBtn">발사!</button>
+    <canvas id="rocketCanvas" width="700" height="400"></canvas>
+  </div>
+</section>
+
+<script>
+  const landingPage = document.getElementById('landingPage');
+  const simulatorContainer = document.getElementById('simulatorContainer');
+  const btnOrbit = document.getElementById('btnOrbit');
+  const btnRocket = document.getElementById('btnRocket');
+  const backBtn = document.getElementById('backBtn');
+
+  const orbitSim = document.getElementById('orbitSim');
+  const rocketSim = document.getElementById('rocketSim');
+
+  btnOrbit.onclick = () => {
+    landingPage.style.display = 'none';
+    simulatorContainer.style.display = 'flex';
+    orbitSim.style.display = 'block';
+    rocketSim.style.display = 'none';
+    stopOrbitAnim();
+    stopRocketAnim();
+    resetOrbit();
+  };
+  btnRocket.onclick = () => {
+    landingPage.style.display = 'none';
+    simulatorContainer.style.display = 'flex';
+    orbitSim.style.display = 'none';
+    rocketSim.style.display = 'block';
+    stopOrbitAnim();
+    stopRocketAnim();
+    resetRocket();
+  };
+  backBtn.onclick = () => {
+    landingPage.style.display = 'flex';  // 여기 display를 'flex'로 바꿔서 중앙 정렬 유지
+    simulatorContainer.style.display = 'none';
+    stopOrbitAnim();
+    stopRocketAnim();
+  };
+
+  // 위성 궤도 진입 시뮬레이터
+  const orbitCanvas = document.getElementById('orbitCanvas');
+  const orbitCtx = orbitCanvas.getContext('2d');
+  const speedInput = document.getElementById('speedInput');
+  const angleInput = document.getElementById('angleInput');
+  const startOrbitBtn = document.getElementById('startOrbitBtn');
+
+  const earthRadius = 6371;
+  const scale = 0.04;
+
+  let orbitAnimationId = null;
+  let sat = null;
+
+  function resetOrbit() {
+    cancelAnimationFrame(orbitAnimationId);
+    orbitCtx.clearRect(0,0, orbitCanvas.width, orbitCanvas.height);
+    drawEarth();
+  }
+
+  function drawEarth() {
+    const cx = orbitCanvas.width/2;
+    const cy = orbitCanvas.height/2;
+    orbitCtx.clearRect(0,0, orbitCanvas.width, orbitCanvas.height);
+    orbitCtx.fillStyle = '#0a5';
+    orbitCtx.beginPath();
+    orbitCtx.arc(cx, cy, earthRadius*scale, 0, Math.PI*2);
+    orbitCtx.fill();
+  }
+
+  function drawSatellite(x, y) {
+    const cx = orbitCanvas.width/2;
+    const cy = orbitCanvas.height/2;
+    orbitCtx.fillStyle = 'yellow';
+    orbitCtx.beginPath();
+    orbitCtx.arc(cx + x*scale, cy + y*scale, 7, 0, Math.PI*2);
+    orbitCtx.fill();
+  }
+
+  function createSatellite(speed_km_s, angleDegree) {
+    const r0 = earthRadius + 300;
+    const angleRad = angleDegree * Math.PI / 180;
+    return {
+      pos: {x: r0 * Math.cos(angleRad), y: r0 * Math.sin(angleRad)},
+      vel: {x: speed_km_s * Math.cos(angleRad + Math.PI/2), y: speed_km_s * Math.sin(angleRad + Math.PI/2)}
+    };
+  }
+
+  function gravityAccel(r) {
+    const G = 6.67430e-11;
+    const M = 5.972e24;
+    const r_m = r * 1000;
+    return G * M / (r_m * r_m) / 1000;
+  }
+
+  function updateSatellite(sat, dt) {
+    const rx = sat.pos.x;
+    const ry = sat.pos.y;
+    const r = Math.sqrt(rx*rx + ry*ry);
+    const a = gravityAccel(r);
+
+    const ax = -a * (rx / r);
+    const ay = -a * (ry / r);
+
+    sat.vel.x += ax * dt;
+    sat.vel.y += ay * dt;
+
+    sat.pos.x += sat.vel.x * dt;
+    sat.pos.y += sat.vel.y * dt;
+  }
+
+  function orbitStep() {
+    const dt = 0.15;
+
+    updateSatellite(sat, dt);
+    drawEarth();
+    drawSatellite(sat.pos.x, sat.pos.y);
+
+    const r = Math.sqrt(sat.pos.x*sat.pos.x + sat.pos.y*sat.pos.y);
+
+    if (r < earthRadius) {
+      alert('위성이 지구에 충돌했습니다!');
+      stopOrbitAnim();
+      return;
+    }
+    if (r > earthRadius * 10) {
+      alert('위성이 궤도 이탈했습니다!');
+      stopOrbitAnim();
+      return;
+    }
+
+    orbitAnimationId = requestAnimationFrame(orbitStep);
+  }
+
+  function startOrbit() {
+    const speed = parseFloat(speedInput.value);
+    const angle = parseFloat(angleInput.value);
+
+    if (isNaN(speed) || isNaN(angle)) {
+      alert('속도와 각도를 정확히 입력하세요!');
+      return;
+    }
+
+    sat = createSatellite(speed, angle);
+    stopOrbitAnim();
+    orbitStep();
+  }
+
+  function stopOrbitAnim() {
+    if (orbitAnimationId) {
+      cancelAnimationFrame(orbitAnimationId);
+      orbitAnimationId = null;
+    }
+  }
+
+  startOrbitBtn.onclick = startOrbit;
+
+  resetOrbit();
+
+  // 로켓 발사 각도 시뮬레이터
+  const rocketCanvas = document.getElementById('rocketCanvas');
+  const rocketCtx = rocketCanvas.getContext('2d');
+  const angleRange = document.getElementById('angleRange');
+  const angleValue = document.getElementById('angleValue');
+  const launchBtn = document.getElementById('launchBtn');
+
+  let rocketAnimationId = null;
+  let rocketData = null;
+
+  angleRange.oninput = () => {
+    angleValue.textContent = angleRange.value;
+  };
+
+  function resetRocket() {
+    if (rocketAnimationId) {
+      cancelAnimationFrame(rocketAnimationId);
+      rocketAnimationId = null;
+    }
+    rocketCtx.clearRect(0, 0, rocketCanvas.width, rocketCanvas.height);
+    drawRocketGround();
+  }
+
+  function drawRocketGround() {
+    rocketCtx.fillStyle = '#0a5';
+    rocketCtx.fillRect(0, rocketCanvas.height - 50, rocketCanvas.width, 50);
+  }
+
+  function launchRocket() {
+    const angleDeg = parseInt(angleRange.value);
+    const angleRad = angleDeg * Math.PI / 180;
+    const v0 = 200;
+
+    rocketData = {
+      x: 0,
+      y: rocketCanvas.height - 50,
+      vx: v0 * Math.cos(angleRad),
+      vy: -v0 * Math.sin(angleRad),
+      t: 0,
+      g: 9.8 * 10,
+    };
+    stopRocketAnim();
+    rocketStep();
+  }
+
+  function rocketStep() {
+    rocketData.t += 0.02;
+
+    rocketData.x = rocketData.vx * rocketData.t;
+    rocketData.y = (rocketCanvas.height - 50) + (rocketData.vy * rocketData.t) + (0.5 * rocketData.g * rocketData.t * rocketData.t);
+
+    rocketCtx.clearRect(0, 0, rocketCanvas.width, rocketCanvas.height);
+    drawRocketGround();
+
+    rocketCtx.fillStyle = 'red';
+    rocketCtx.beginPath();
+    rocketCtx.arc(rocketData.x, rocketData.y, 10, 0, Math.PI*2);
+    rocketCtx.fill();
+
+    if (rocketData.y < rocketCanvas.height - 50) {
+      rocketAnimationId = requestAnimationFrame(rocketStep);
+    } else {
+      rocketCtx.fillStyle = 'white';
+      rocketCtx.font = '30px Arial';
+      rocketCtx.fillText(`착륙! 거리: ${rocketData.x.toFixed(2)} px`, 10, 40);
+      stopRocketAnim();
+    }
+  }
+
+  function stopRocketAnim() {
+    if (rocketAnimationId) {
+      cancelAnimationFrame(rocketAnimationId);
+      rocketAnimationId = null;
+    }
+  }
+
+  launchBtn.onclick = launchRocket;
+
+  resetRocket();
+</script>
+
+</body>
+</html>
